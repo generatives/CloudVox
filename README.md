@@ -1,3 +1,6 @@
+This repo is based on the Learn WebGPU web book and the below README is left over from that repo. Over time my intention is to turn it into a bloxel engine as a "learn C++" project. I will re-write the README as the project comes into shape.
+
+
 LearnWebGPU - Code
 ==================
 
