@@ -1,55 +1,64 @@
-cmake_minimum_required(VERSION 3.0...3.25)
+cmake_minimum_required(VERSION 3.1...3.25)
 project(
 	LearnWebGPU
 	VERSION 0.1.0
 	LANGUAGES CXX C
 )
 
-# Add glfw
-if (NOT EMSCRIPTEN)
-	add_subdirectory(glfw)
-else()
-	# Emscripten has built-in support for GLFW but requires the `-sUSE_GLFW=3` link option:
-	add_library(glfw INTERFACE)
-	target_link_options(glfw INTERFACE -sUSE_GLFW=3)
-endif()
+include(utils.cmake)
 
+# We add an option to enable different settings when developping the app than
+# when distributing it.
+option(DEV_MODE "Set up development helper settings" ON)
+
+add_subdirectory(glfw)
 add_subdirectory(webgpu)
-# Add a little extension of glfw that connects it to WebGPU
 add_subdirectory(glfw3webgpu)
+add_subdirectory(imgui)
 
 add_executable(App
 	main.cpp
-	webgpu-utils.h
-	webgpu-utils.cpp
+	Application.h
+	Application.cpp
+	ResourceManager.h
+	ResourceManager.cpp
+	implementations.cpp
 )
 
-# Add glfw and glfw3webgpu as dependencies of our App
-target_link_libraries(App PRIVATE glfw webgpu glfw3webgpu)
-
-target_copy_webgpu_binaries(App)
-
-set_target_properties(App PROPERTIES
-	CXX_STANDARD 17
-	CXX_STANDARD_REQUIRED ON
-	CXX_EXTENSIONS OFF
-	COMPILE_WARNING_AS_ERROR ON
-)
-
-if (MSVC)
-	target_compile_options(App PRIVATE /W4)
+if(DEV_MODE)
+	# In dev mode, we load resources from the source tree, so that when we
+	# dynamically edit resources (like shaders), these are correctly
+	# versionned.
+	target_compile_definitions(App PRIVATE
+		RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+	)
 else()
-	target_compile_options(App PRIVATE -Wall -Wextra -pedantic)
-endif()
-
-if (XCODE)
-	set_target_properties(App PROPERTIES
-		XCODE_GENERATE_SCHEME ON
-		XCODE_SCHEME_ENABLE_GPU_FRAME_CAPTURE_MODE "Metal"
+	# In release mode, we just load resources relatively to wherever the
+	# executable is launched from, so that the binary is portable
+	target_compile_definitions(App PRIVATE
+		RESOURCE_DIR="./resources"
 	)
 endif()
 
-if (EMSCRIPTEN)
-	set_target_properties(App PROPERTIES SUFFIX ".html")
-	target_link_options(App PRIVATE -sASYNCIFY)
-endif()
+target_include_directories(App PRIVATE .)
+
+target_link_libraries(App PRIVATE glfw webgpu glfw3webgpu imgui)
+
+set_target_properties(App PROPERTIES
+	CXX_STANDARD 17
+	VS_DEBUGGER_ENVIRONMENT "DAWN_DEBUG_BREAK_ON_ERROR=1"
+)
+target_treat_all_warnings_as_errors(App)
+target_copy_webgpu_binaries(App)
+
+if (MSVC)
+	# Ignore a warning that GLM requires to bypass
+	# Disable warning C4201: nonstandard extension used: nameless struct/union
+	target_compile_options(App PUBLIC /wd4201)
+	# Disable warning C4305: truncation from 'int' to 'bool' in 'if' condition
+	target_compile_options(App PUBLIC /wd4305)
+
+	# Ignore a warning that stb_image requires to bypass
+	# Disable warning C4244: conversion from 'int' to 'short', possible loss of data
+	target_compile_options(App PUBLIC /wd4244)
+endif (MSVC)
